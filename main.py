@@ -120,7 +120,7 @@ async def say_hello(body: MessageBody):
         graph_api_url = "https://graph.facebook.com/v15.0/330351516817410/messages"
 
         headers = {
-            "Authorization": "Bearer EAAQHiLvKGhoBO2i0ZAZAnZCyPCGhQ2GvucJa5naoliRhGmg2SvOzyueA4bWjipeJwym6ZBCaVKx1UMZATZALeDhopTMfdPbuXRMdatAbCJxagZBAZAuG9ch4v6SZBaRp5ZAvwMoxGiyk29KtIbYFnhQuIgiAcbdZBZCMyOeXi0w3ZAKZAkRdZAyZCIlYA9sMBOtFNVIc950RlBjt4ZB5YNnW4e67m7uGsKSiA9HMZD",  # Replace with your access token
+            "Authorization": "Bearer EAAQHiLvKGhoBO5owKwKQEDK9zix4lf5f0aDo2bqmCi36JHxsxB3vfhdKUR40DA515N91dxWMaUZBUY3kCBGq8FEvHX0x3VCKnuWb1hq7ZCqBUPhrxPUDhPnvMnr1V2CQQpz1xmZAyZC22jHleOJeSiMZCrRE4efxcngJfrj7wV23TWGgvjxXO1uwbZA9HxIGWfDP1rbaCXHa4GhWUHvOlJFf95ZAogZD",  # Replace with your access token
             "Content-Type": "application/json"
         }
 
@@ -134,6 +134,8 @@ async def say_hello(body: MessageBody):
         }
 
         response = requests.post(graph_api_url, headers=headers, json=data)
+        print(response)
+        print(body.payload.number)
         response.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sending video message via WhatsApp: {str(e)}")
