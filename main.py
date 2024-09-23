@@ -8,9 +8,12 @@ import datetime  # Add this import
 
 app = FastAPI()
 
-class MessageBody(BaseModel):
-    url: str  # URL of the MP3 file
+class Payload(BaseModel):
     number: str  # Number or ID for output filename
+    url: str  # URL of the audio file
+
+class MessageBody(BaseModel):
+    payload: Payload  # Nested payload containing number and URL
 
 IMAGE_PATH = "360_F_406919209_O9Sy4SKu3dVx0mE3RqYfCH5hqMwVWbOk.jpg"  # Local file path to the static image
 
@@ -28,7 +31,7 @@ async def root():
 
 @app.post("/sendMessage")
 async def say_hello(body: MessageBody):
-    mp3_url = body.url
+    mp3_url = body.payload.url
 
     # Extract the filename from the URL
     parsed_url = urlparse(mp3_url)
@@ -123,7 +126,7 @@ async def say_hello(body: MessageBody):
 
         data = {
             "messaging_product": "whatsapp",
-            "to": body.number,
+            "to": body.payload.number,
             "type": "video",
             "video": {
                 "link": video_public_url
