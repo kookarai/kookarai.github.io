@@ -185,7 +185,7 @@
         .catch(() => alert("Error uploading audio."));
       },
       scheduleEvent() {
-        const payload = { audioURL: this.audioURL, number: this.phoneNumber };
+        const payload = { url: this.audioURL, number: this.phoneNumber };
         const scheduleAt = moment(this.datetime).utc().format();
 
         fetch('https://intent-kit-16.hasura.app/v1/metadata', {
