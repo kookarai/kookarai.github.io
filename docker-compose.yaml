@@ -1,0 +1,14 @@
+version: '3.6'
+services:
+  kookarai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kookarai
+    restart: always
+    networks:
+      - kookarai
+    ports:
+      - 8000:8000
+networks:
+  kookarai: { }
