@@ -1,7 +1,5 @@
 moviepy
 requests
-numpy
 fastapi
 pydantic
-pillow
-av
+uvicorn
