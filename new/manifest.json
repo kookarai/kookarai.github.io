@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Floating Action Button Extension",
+  "version": "1.0",
+  "description": "Adds a floating action button on specific URLs.",
+  "content_scripts": [
+    {
+      "matches": ["https://app.chatwoot.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "permissions": []
+}
