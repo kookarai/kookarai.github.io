@@ -1,5 +1,7 @@
 import fitz  # PyMuPDF
+from openai import OpenAI
 
+client = OpenAI(api_key="sk-SjyHZCZVAfahyXo8JxPvmDKsplW3Ji3KUtptpBuIifT3BlbkFJizrP3LjrVY8j8hJkpOi97cklqB1ATr5rV3x_TXNTUA")
 
 # Function to extract text from a PDF
 def extract_text_from_pdf(pdf_path):
@@ -25,12 +27,30 @@ def extract_text_from_pdf(pdf_path):
 
     return extracted_text
 
+def send_to_openai(extracted_text):
+    prompt = f"Extract the relevant JSON data from the following text. please send me the json data for the whole pdf.:\n\n{extracted_text}"
+
+    models = client.models.list()
+
+    # Send the request to OpenAI
+    response = client.chat.completions.create(
+        model="gpt-4o-2024-05-13",  # or any other model you're using
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    # Extract the JSON data from the response
+    json_data = response.choices[0].message.content
+    return json_data
+
 
 # Specify the path to the PDF
-pdf_path = 'invoice2.pdf'
+pdf_path = 'taco_186152685629642_merged.pdf'
 
 # Extract the text
 extracted_text = extract_text_from_pdf(pdf_path)
+json = send_to_openai(extracted_text)
 
 # Print the extracted text
-print(extracted_text)
+print(json)

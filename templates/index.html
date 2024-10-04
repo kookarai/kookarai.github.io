@@ -24,12 +24,12 @@
         </button>
     </div>
 
-    <p class="text-gray-400 text-center mb-6">{{ status }}</p>
+    <p class="text-gray-400 text-center mb-6">[[ status ]]</p>
 
     <audio :src="audioSrc" class="w-full mb-6 rounded-lg" controls v-if="audioSrc"></audio>
 
-    <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" placeholder="Phone Number" type="tel"
-           v-model="phoneNumber">
+    <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" placeholder="Group Name" type="text"
+           v-model="groupName">
 
     <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" id="datetime" placeholder="Choose date and time" type="text"
            v-model="datetime">
@@ -39,22 +39,6 @@
         Schedule
     </button>
 
-    <div class="mt-8" v-if="scheduledEvents.length">
-        <h2 class="text-white mb-4 text-lg font-semibold">Scheduled Events</h2>
-        <ul class="bg-gray-700 p-4 rounded-lg">
-            <li :key="index" class="flex justify-between items-center mb-2 text-white"
-                v-for="(event, index) in scheduledEvents">
-                <div>
-                    <p class="text-sm">{{ event.datetime }}</p>
-                    <p class="text-xs text-gray-400">Phone: {{ event.phoneNumber }}</p>
-                </div>
-                <button @click="deleteScheduledEvent(event.id)"
-                        class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg">
-                    Delete
-                </button>
-            </li>
-        </ul>
-    </div>
 </div>
 
 <script>
@@ -67,6 +51,7 @@
   });
   let mainApp = new Vue({
     el: "#app",
+    delimiters: ["[[", "]]"],
     data: {
       status: "Not recording...",
       isRecording: false,
@@ -74,7 +59,7 @@
       mediaRecorder: null,
       audioSrc: null,
       datetime: "",
-      phoneNumber: "918073756411",
+      groupName: "",
       modelID: "eleven_multilingual_sts_v2",
       voiceID: "DJDkcaY4POaxra3iaZ5b",
       apiKey: "sk_3b1e7773ad665bd2d039e2a2fdb987c214c1cf07ac63124b",
@@ -91,62 +76,10 @@
     },
     computed: {
       canSchedule() {
-        return this.audioURL && this.datetime && /^\d{10,15}$/.test(this.phoneNumber);
+        return this.audioURL && this.datetime && this.groupName;
       },
     },
     methods: {
-      async deleteScheduledEvent(eventId) {
-        try {
-          const response = await fetch("https://intent-kit-16.hasura.app/v1/metadata", {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-hasura-admin-secret": "32qR4KmXOIpsGPQKMqEJHGJS27G5s7HdSKO3gdtQd2kv5e852SiYwWNfxkZOBuQ6",
-            },
-            body: JSON.stringify({
-              type: "delete_scheduled_event",
-              args: {
-                type: "one_off",
-                event_id: eventId,
-              },
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const data = await response.json();
-          console.log(`Event ${eventId} deleted successfully`, data);
-          this.getScheduledEvents();
-          return data;
-        } catch (error) {
-          console.error(`Error deleting event ${eventId}:`, error);
-        }
-      },
-      async getScheduledEvents() {
-        try {
-          const response = await fetch("https://intent-kit-16.hasura.app/v1/metadata", {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-hasura-admin-secret": "32qR4KmXOIpsGPQKMqEJHGJS27G5s7HdSKO3gdtQd2kv5e852SiYwWNfxkZOBuQ6",
-            },
-            body: JSON.stringify({
-              type: "get_scheduled_events",
-              args: {type: "one_off", status: ["scheduled"], limit: 1001},
-            }),
-          });
-          const data = await response.json();
-          this.scheduledEvents = data.events.map(event => ({
-            datetime: event.scheduled_time,
-            phoneNumber: event.payload.number,
-            id: event.id,
-          }));
-        } catch (error) {
-          console.error("Error fetching events:", error);
-        }
-      },
       startRecording() {
         this.audioSrc = null;
         navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
@@ -197,40 +130,42 @@
         }).catch(() => alert("Error uploading audio."));
       },
       scheduleEvent() {
-        const payload = {url: this.audioURL, number: this.phoneNumber};
-        const scheduleAt = moment(this.datetime).utc().format();
+          const payload = {
+            url: this.audioURL,
+            group: this.groupName,
+            scheduledAt: moment(this.datetime).utc().format(), // Use UTC format for scheduling
+          };
 
-        fetch("https://intent-kit-16.hasura.app/v1/metadata", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Hasura-Role": "admin",
-            "x-hasura-admin-secret": "32qR4KmXOIpsGPQKMqEJHGJS27G5s7HdSKO3gdtQd2kv5e852SiYwWNfxkZOBuQ6",
-          },
-          body: JSON.stringify({
-            type: "create_scheduled_event",
-            args: {
-              webhook: "https://kookarai.grow90.org/sendMessage",
-              schedule_at: scheduleAt,
-              payload,
+          fetch("https://2d4c-14-99-240-130.ngrok-free.app/api/v1/forward-retool-audio", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
             },
-          }),
-        }).then(() => {
-          this.status = `Event scheduled at ${moment(this.datetime).format("YYYY-MM-DD HH:mm:ss")}.`;
-          this.getScheduledEvents();
-        }).catch(() => this.status = "Error scheduling event.");
-      },
-      getPhoneNumberFromURL() {
+            body: JSON.stringify(payload),
+          })
+          .then(response => {
+            if (!response.ok) {this.groupName
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(() => {
+            this.status = `Event scheduled at ${moment(this.datetime).format("YYYY-MM-DD HH:mm:ss")}.`;
+          })
+          .catch(() => {
+            this.status = "Error scheduling event.";
+          });
+    },
+      getGroupNameFromURL() {
         const params = new URLSearchParams(window.location.search);
-        const phone = params.get("phone");
-        if (phone && /^\d{10,15}$/.test(phone)) {
-          this.phoneNumber = phone;
+        const group = params.get("group");
+        if (group) {
+          this.groupName = group;
         }
       },
     },
     mounted() {
-      this.getScheduledEvents();
-      this.getPhoneNumberFromURL();
+      this.getGroupNameFromURL();
       flatpickr("#datetime", {
         enableTime: true,
         dateFormat: "Y-m-d H:i",

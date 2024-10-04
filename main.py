@@ -1,19 +1,22 @@
-import requests
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from moviepy.editor import ImageClip, AudioFileClip
-import os
-from urllib.parse import urlparse
 import datetime  # Add this import
+import json
+from urllib.parse import urlparse
+
+import requests
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from moviepy.editor import ImageClip, AudioFileClip
+from pydantic import BaseModel
+from starlette.responses import HTMLResponse
 
 app = FastAPI()
 
-class Payload(BaseModel):
-    number: str  # Number or ID for output filename
-    url: str  # URL of the audio file
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="new"), name="static")
 
-class MessageBody(BaseModel):
-    payload: Payload  # Nested payload containing number and URL
+# Set up Jinja2 templates
+templates = Jinja2Templates(directory="templates")
 
 IMAGE_PATH = "360_F_406919209_O9Sy4SKu3dVx0mE3RqYfCH5hqMwVWbOk.jpg"  # Local file path to the static image
 
@@ -22,12 +25,88 @@ SUPABASE_URL = "https://oqhygqxpxpdjtvaahwxk.supabase.co"
 SUPABASE_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xaHlncXhweHBkanR2YWFod3hrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTYxNTY5MSwiZXhwIjoyMDQxMTkxNjkxfQ.oYECwS4Y6ymOwGuXOVKh0lIWQVlgnbDOlDCfYY1AUVk"  # Replace with your Supabase API key
 SUPABASE_BUCKET = "video"  # Name of your storage bucket
 
+LLM_API_URL_TEMPLATE = "http://13.127.104.196:8000/process_msg?house_id={}&cook_id={}&user_message={}"
+
 if not SUPABASE_URL or not SUPABASE_API_KEY or not SUPABASE_BUCKET:
-    raise Exception("Supabase configuration is missing. Please set SUPABASE_URL, SUPABASE_API_KEY, and SUPABASE_BUCKET environment variables.")
+    raise Exception(
+        "Supabase configuration is missing. Please set SUPABASE_URL, SUPABASE_API_KEY, and SUPABASE_BUCKET environment variables.")
+
+
+class Payload(BaseModel):
+    number: str  # Number or ID for output filename
+    url: str  # URL of the audio file
+
+
+class MessageBody(BaseModel):
+    payload: Payload  # Nested payload containing number and URL
+
 
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+
+@app.get("/root", response_class=HTMLResponse)
+async def read_root(request: Request):
+    event = datetime.datetime.now()
+    return templates.TemplateResponse("index.html", {"request": request, "event": event})
+
+
+@app.post("/process_ticket/{ticket_id}")
+async def process_ticket(ticket_id: int):
+    try:
+        headers = {
+            "apikey": SUPABASE_API_KEY,
+            "Authorization": f"Authorization {SUPABASE_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        # Fetch the ticket details using Supabase API
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/ticket_master?id=eq.{ticket_id}",
+            headers=headers
+        )
+
+        if response.status_code != 200 or not response.json():
+            raise HTTPException(status_code=404, detail="Ticket not found")
+
+        ticket_info = response.json()[0]
+        house_id = ticket_info['house_id']
+        cook_id = ticket_info['cook_id']
+        conversations = ticket_info['conversations']
+
+        llm_api_url = LLM_API_URL_TEMPLATE.format(house_id, cook_id, conversations)
+
+        # Call the external LLM API
+        try:
+            llm_response = requests.get(llm_api_url, timeout=60)
+            if llm_response.status_code == 200:
+                llm_response_data = llm_response.json()
+
+                # Update the llm_response in ticket_master using Supabase API
+                update_data = {
+                    "llm_message": llm_response_data,
+                    "llm_status": "PENDING"
+                }
+
+                update_response = requests.patch(
+                    f"{SUPABASE_URL}/rest/v1/ticket_master?id=eq.{ticket_id}",
+                    headers=headers,
+                    data=json.dumps(update_data)
+                )
+
+                if update_response.status_code == 204:
+                    return {"message": "LLM response saved successfully", "llm_message": llm_response_data}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to update the llm_response in Supabase")
+            else:
+                raise HTTPException(status_code=llm_response.status_code, detail="Error from LLM API")
+
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Error calling LLM API: {e}")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing ticket: {e}")
+
 
 @app.post("/sendMessage")
 async def say_hello(body: MessageBody):
