@@ -31,8 +31,8 @@
     <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" placeholder="Group Name" type="text"
            v-model="groupName">
 
-    <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" id="datetime" placeholder="Choose date and time" type="text"
-           v-model="datetime">
+    <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" id="datetime"
+           placeholder="Choose date and time" type="text">
 
     <button :disabled="!canSchedule || !audioSrc" @click="scheduleEvent" @style=""
             class="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-lg">
@@ -42,138 +42,152 @@
 </div>
 
 <script>
-  window.addEventListener("message", function(event) {
-    if (!isJSONValid(event.data)) {
-      return;
-    }
+    window.addEventListener("message", function(event) {
+      if (!isJSONValid(event.data)) {
+        return;
+      }
 
-    const eventData = JSON.parse(event.data);
-  });
-  let mainApp = new Vue({
-    el: "#app",
-    delimiters: ["[[", "]]"],
-    data: {
-      status: "Not recording...",
-      isRecording: false,
-      audioChunks: [],
-      mediaRecorder: null,
-      audioSrc: null,
-      datetime: "",
-      groupName: "",
-      modelID: "eleven_multilingual_sts_v2",
-      voiceID: "DJDkcaY4POaxra3iaZ5b",
-      apiKey: "sk_3b1e7773ad665bd2d039e2a2fdb987c214c1cf07ac63124b",
-      supabaseUrl: "https://oqhygqxpxpdjtvaahwxk.supabase.co",
-      supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xaHlncXhweHBkanR2YWFod3hrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTYxNTY5MSwiZXhwIjoyMDQxMTkxNjkxfQ.oYECwS4Y6ymOwGuXOVKh0lIWQVlgnbDOlDCfYY1AUVk",
-      audioURL: null,
-      scheduledEvents: [],
-      voiceSettings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-        style: 0.0,
-        use_speaker_boost: true,
+      const eventData = JSON.parse(event.data);
+    });
+    let mainApp = new Vue({
+      el: "#app",
+      delimiters: ["[[", "]]"],
+      data: {
+        status: "Not recording...",
+        isRecording: false,
+        audioChunks: [],
+        mediaRecorder: null,
+        audioSrc: null,
+        datetime: "",
+        groupName: "",
+        modelID: "eleven_multilingual_sts_v2",
+        voiceID: "DJDkcaY4POaxra3iaZ5b",
+        apiKey: "sk_3b1e7773ad665bd2d039e2a2fdb987c214c1cf07ac63124b",
+        supabaseUrl: "https://oqhygqxpxpdjtvaahwxk.supabase.co",
+        supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xaHlncXhweHBkanR2YWFod3hrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTYxNTY5MSwiZXhwIjoyMDQxMTkxNjkxfQ.oYECwS4Y6ymOwGuXOVKh0lIWQVlgnbDOlDCfYY1AUVk",
+        audioURL: null,
+        scheduledEvents: [],
+        voiceSettings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.0,
+          use_speaker_boost: true,
+        },
       },
-    },
-    computed: {
-      canSchedule() {
-        return this.audioURL && this.datetime && this.groupName;
+      computed: {
+        canSchedule() {
+          return this.audioURL && this.datetime && this.groupName;
+        },
       },
-    },
-    methods: {
-      startRecording() {
-        this.audioSrc = null;
-        navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
-          this.mediaRecorder = new MediaRecorder(stream);
-          this.mediaRecorder.start();
-          this.status = "Recording...";
-          this.isRecording = true;
-          this.mediaRecorder.ondataavailable = event => this.audioChunks.push(event.data);
-        }).catch(() => alert("Mic access denied"));
-      },
-      stopRecording() {
-        this.mediaRecorder.stop();
-        this.mediaRecorder.onstop = () => {
-          const audioBlob = new Blob(this.audioChunks, {type: "audio/webm"});
-          this.audioChunks = [];
-          this.processAudio(audioBlob);
-        };
-        this.isRecording = false;
-        this.status = "Recording stopped.";
-      },
-      processAudio(audioBlob) {
-        const form = new FormData();
-        form.append("model_id", this.modelID);
-        form.append("voice_settings", JSON.stringify(this.voiceSettings));
-        form.append("audio", audioBlob);
-
-        fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${this.voiceID}`, {
-          method: "POST",
-          headers: {"xi-api-key": this.apiKey},
-          body: form,
-        }).then(response => response.blob()).then(blob => {
-          this.uploadAudio(blob);
-          this.audioSrc = URL.createObjectURL(blob);
-          this.status = "Audio processed.";
-        }).catch(() => this.status = "Error processing audio.");
-      },
-      uploadAudio(audioBlob) {
-        const fileName = `audio-${Date.now()}.wav`;
-        const formData = new FormData();
-        formData.append("file", audioBlob, fileName);
-
-        fetch(`${this.supabaseUrl}/storage/v1/object/audio/${fileName}`, {
-          method: "POST",
-          headers: {"Authorization": `Bearer ${this.supabaseKey}`, "apikey": this.supabaseKey},
-          body: formData,
-        }).then(response => {
-          if (response.ok) this.audioURL = `${this.supabaseUrl}/storage/v1/object/public/audio/${fileName}`;
-        }).catch(() => alert("Error uploading audio."));
-      },
-      scheduleEvent() {
-          const payload = {
-            url: this.audioURL,
-            group: this.groupName,
-            scheduledAt: moment(this.datetime).utc().format(), // Use UTC format for scheduling
+      methods: {
+        startRecording() {
+          this.audioSrc = null;
+          navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
+            this.mediaRecorder = new MediaRecorder(stream);
+            this.mediaRecorder.start();
+            this.status = "Recording...";
+            this.isRecording = true;
+            this.mediaRecorder.ondataavailable = event => this.audioChunks.push(event.data);
+          }).catch(() => alert("Mic access denied"));
+        },
+        stopRecording() {
+          this.mediaRecorder.stop();
+          this.mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(this.audioChunks, {type: "audio/webm"});
+            this.audioChunks = [];
+            this.processAudio(audioBlob);
           };
+          this.isRecording = false;
+          this.status = "Recording stopped.";
+        },
+        processAudio(audioBlob) {
+          const form = new FormData();
+          form.append("model_id", this.modelID);
+          form.append("voice_settings", JSON.stringify(this.voiceSettings));
+          form.append("audio", audioBlob);
 
-          fetch("http://3.108.215.55/api/v1/forward-retool-audio", {
+          fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${this.voiceID}`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          })
-          .then(response => {
-            if (!response.ok) {this.groupName
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-          })
-          .then(() => {
-            this.status = `Event scheduled at ${moment(this.datetime).format("YYYY-MM-DD HH:mm:ss")}.`;
-          })
-          .catch(() => {
-            this.status = "Error scheduling event.";
-          });
-    },
-      getGroupNameFromURL() {
-        const params = new URLSearchParams(window.location.search);
-        const group = params.get("group");
-        if (group) {
-          this.groupName = group;
-        }
+            headers: {"xi-api-key": this.apiKey},
+            body: form,
+          }).then(response => response.blob()).then(blob => {
+            this.uploadAudio(blob);
+            this.audioSrc = URL.createObjectURL(blob);
+            this.status = "Audio processed.";
+          }).catch(() => this.status = "Error processing audio.");
+        },
+        uploadAudio(audioBlob) {
+          const fileName = `audio-${Date.now()}.wav`;
+          const formData = new FormData();
+          formData.append("file", audioBlob, fileName);
+
+          fetch(`${this.supabaseUrl}/storage/v1/object/audio/${fileName}`, {
+            method: "POST",
+            headers: {"Authorization": `Bearer ${this.supabaseKey}`, "apikey": this.supabaseKey},
+            body: formData,
+          }).then(response => {
+            if (response.ok) this.audioURL = `${this.supabaseUrl}/storage/v1/object/public/audio/${fileName}`;
+          }).catch(() => alert("Error uploading audio."));
+        },
+        scheduleEvent() {
+            const payload = {
+              url: this.audioURL,
+              group: this.groupName,
+              scheduledAt: moment(this.datetime).utc().format(), // Use UTC format for scheduling
+            };
+
+            fetch("http://3.108.215.55/api/v1/forward-retool-audio", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            })
+            .then(response => {
+              console.log("Response status:", response.status);
+              if (!response.ok) {
+                // Try to parse error message if the status is not OK
+                return response.text().then(errorMessage => {
+                  throw new Error(`HTTP error! status: ${response.status}, message: ${errorMessage}`);
+                });
+              }
+              // If the response is plain text, return it as text
+              return response.text(); // Change to response.text() for plain text response
+            })
+            .then(responseText => {
+              // Log the successful response message
+              console.log("Response text:", responseText);
+              this.status = responseText;
+            })
+            .catch(error => {
+              console.error("Error scheduling event:", error);
+              this.status = "Error scheduling event.";
+            });
       },
-    },
-    mounted() {
-      this.getGroupNameFromURL();
-      flatpickr("#datetime", {
-        enableTime: true,
-        dateFormat: "Y-m-d H:i",
-        minDate: new Date(Date.now() + 60000),
-        defaultDate: new Date(Date.now() + 60000),
-      });
-    },
-  });
+      getGroupNameFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const group = params.get("group");
+            if (group) {
+              this.groupName = group;
+            }
+        },
+      },
+      mounted() {
+        this.getGroupNameFromURL();
+        this.$nextTick(() => {
+            flatpickr("#datetime", {
+                enableTime: true,
+                dateFormat: "Y-m-d H:i",
+                minDate: new Date(Date.now() + 60000), // 1 minute in the future
+                defaultDate: new Date(Date.now() + 60000),
+                onChange: (selectedDates) => {
+                  // Manually update datetime in Vue's data
+                  this.datetime = selectedDates[0];
+                },
+              });
+        });
+      },
+    });
 </script>
 
 </body>
