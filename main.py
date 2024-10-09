@@ -86,6 +86,8 @@ async def process_ticket(ticket_id: int):
                 # Update the llm_response in ticket_master using Supabase API
                 update_data = {
                     "llm_message": llm_response_data,
+                    "llm_message_duplicate": llm_response_data['message'][1],
+                    "llm_intent": llm_response_data['message'][0],
                     "llm_status": "PENDING"
                 }
 

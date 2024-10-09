@@ -144,23 +144,18 @@
               body: JSON.stringify(payload),
             })
             .then(response => {
-              console.log("Response status:", response.status);
               if (!response.ok) {
                 // Try to parse error message if the status is not OK
                 return response.text().then(errorMessage => {
                   throw new Error(`HTTP error! status: ${response.status}, message: ${errorMessage}`);
                 });
               }
-              // If the response is plain text, return it as text
               return response.text(); // Change to response.text() for plain text response
             })
             .then(responseText => {
-              // Log the successful response message
-              console.log("Response text:", responseText);
               this.status = responseText;
             })
             .catch(error => {
-              console.error("Error scheduling event:", error);
               this.status = "Error scheduling event.";
             });
       },
