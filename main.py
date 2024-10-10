@@ -78,35 +78,37 @@ async def process_ticket(ticket_id: int):
         llm_api_url = LLM_API_URL_TEMPLATE.format(house_id, cook_id, conversations)
 
         # Call the external LLM API
-        try:
-            llm_response = requests.get(llm_api_url, timeout=60)
-            if llm_response.status_code == 200:
-                llm_response_data = llm_response.json()
+        if cook_id:
+            try:
+                llm_response = requests.get(llm_api_url, timeout=60)
+                if llm_response.status_code == 200:
+                    llm_response_data = llm_response.json()
 
-                # Update the llm_response in ticket_master using Supabase API
-                update_data = {
-                    "llm_message": llm_response_data,
-                    "llm_message_duplicate": llm_response_data['message'][1],
-                    "llm_intent": llm_response_data['message'][0],
-                    "llm_status": "PENDING"
-                }
+                    # Update the llm_response in ticket_master using Supabase API
+                    update_data = {
+                        "llm_message": llm_response_data,
+                        "llm_message_duplicate": llm_response_data['message'][1],
+                        "llm_intent": llm_response_data['message'][0],
+                        "llm_status": "PENDING"
+                    }
 
-                update_response = requests.patch(
-                    f"{SUPABASE_URL}/rest/v1/ticket_master?id=eq.{ticket_id}",
-                    headers=headers,
-                    data=json.dumps(update_data)
-                )
+                    update_response = requests.patch(
+                        f"{SUPABASE_URL}/rest/v1/ticket_master?id=eq.{ticket_id}",
+                        headers=headers,
+                        data=json.dumps(update_data)
+                    )
 
-                if update_response.status_code == 204:
-                    return {"message": "LLM response saved successfully", "llm_message": llm_response_data}
+                    if update_response.status_code == 204:
+                        return {"message": "LLM response saved successfully", "llm_message": llm_response_data}
+                    else:
+                        raise HTTPException(status_code=500, detail="Failed to update the llm_response in Supabase")
                 else:
-                    raise HTTPException(status_code=500, detail="Failed to update the llm_response in Supabase")
-            else:
-                raise HTTPException(status_code=llm_response.status_code, detail="Error from LLM API")
+                    raise HTTPException(status_code=llm_response.status_code, detail="Error from LLM API")
 
-        except requests.exceptions.RequestException as e:
-            raise HTTPException(status_code=500, detail=f"Error calling LLM API: {e}")
-
+            except requests.exceptions.RequestException as e:
+                raise HTTPException(status_code=500, detail=f"Error calling LLM API: {e}")
+        else:
+            return
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing ticket: {e}")
 
