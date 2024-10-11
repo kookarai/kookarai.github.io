@@ -26,7 +26,11 @@
 
     <p class="text-gray-400 text-center mb-6">[[ status ]]</p>
 
-    <audio :src="audioSrc" class="w-full mb-6 rounded-lg" controls v-if="audioSrc"></audio>
+    <!-- Playback for the original recorded audio -->
+    <audio :src="originalAudioSrc" class="w-full mb-6 rounded-lg" controls v-if="originalAudioSrc"></audio>
+
+    <!-- Playback for the AI-generated audio -->
+    <audio :src="aiAudioSrc" class="w-full mb-6 rounded-lg" controls v-if="aiAudioSrc"></audio>
 
     <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" placeholder="Group Name" type="text"
            v-model="groupName">
@@ -34,21 +38,26 @@
     <input class="w-full py-2 px-4 bg-gray-700 text-white rounded-lg mb-6" id="datetime"
            placeholder="Choose date and time" type="text">
 
-    <button :disabled="!canSchedule || !audioSrc" @click="scheduleEvent" @style=""
+    <!-- Add Generate Audio Button -->
+    <button :disabled="!audioBlob" @click="generateAudio"
+            class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-lg mb-6">
+        Generate AI Audio
+    </button>
+    
+    <!-- Send Now Button -->
+    <button :disabled="!aiAudioSrc" @click="sendNow"
+            class="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 px-4 rounded-lg mb-6">
+        Send Now
+    </button>
+    
+    <!-- Schedule Button -->
+    <button :disabled="!canSchedule || !aiAudioSrc" @click="scheduleEvent"
             class="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-lg">
         Schedule
     </button>
-
 </div>
 
 <script>
-    window.addEventListener("message", function(event) {
-      if (!isJSONValid(event.data)) {
-        return;
-      }
-
-      const eventData = JSON.parse(event.data);
-    });
     let mainApp = new Vue({
       el: "#app",
       delimiters: ["[[", "]]"],
@@ -57,7 +66,9 @@
         isRecording: false,
         audioChunks: [],
         mediaRecorder: null,
-        audioSrc: null,
+        originalAudioSrc: null,  // Human audio (raw recorded audio) URL
+        aiAudioSrc: null,        // AI-generated audio URL
+        audioBlob: null,         // Store raw audioBlob before conversion
         datetime: "",
         groupName: "",
         modelID: "eleven_multilingual_sts_v2",
@@ -81,109 +92,159 @@
       },
       methods: {
         startRecording() {
-          this.audioSrc = null;
-          navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
-            this.mediaRecorder = new MediaRecorder(stream);
-            this.mediaRecorder.start();
-            this.status = "Recording...";
-            this.isRecording = true;
-            this.mediaRecorder.ondataavailable = event => this.audioChunks.push(event.data);
-          }).catch(() => alert("Mic access denied"));
+            this.originalAudioSrc = null;
+            this.aiAudioSrc = null;
+            this.audioBlob = null;
+            navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
+                this.mediaRecorder = new MediaRecorder(stream);
+                this.mediaRecorder.start();
+                this.status = "Recording...";
+                this.isRecording = true;
+                this.mediaRecorder.ondataavailable = event => this.audioChunks.push(event.data);
+            }).catch(() => alert("Mic access denied"));
         },
         stopRecording() {
-          this.mediaRecorder.stop();
-          this.mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(this.audioChunks, {type: "audio/webm"});
-            this.audioChunks = [];
-            this.processAudio(audioBlob);
-          };
-          this.isRecording = false;
-          this.status = "Recording stopped.";
+            this.mediaRecorder.stop();
+            this.mediaRecorder.onstop = () => {
+                this.audioBlob = new Blob(this.audioChunks, {type: "audio/webm"});
+                this.audioChunks = [];
+                this.originalAudioSrc = URL.createObjectURL(this.audioBlob);  // Set the human audio for playback
+                this.status = "Recording stopped. You can now listen to the original audio.";
+            };
+            this.isRecording = false;
         },
-        processAudio(audioBlob) {
-          const form = new FormData();
-          form.append("model_id", this.modelID);
-          form.append("voice_settings", JSON.stringify(this.voiceSettings));
-          form.append("audio", audioBlob);
-
-          fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${this.voiceID}`, {
-            method: "POST",
-            headers: {"xi-api-key": this.apiKey},
-            body: form,
-          }).then(response => response.blob()).then(blob => {
-            this.uploadAudio(blob);
-            this.audioSrc = URL.createObjectURL(blob);
-            this.status = "Audio processed.";
-          }).catch(() => this.status = "Error processing audio.");
+        generateAudio() {
+            if (!this.audioBlob) {
+                alert("No audio recorded yet.");
+                return;
+            }
+    
+            this.status = "Processing AI audio...";
+    
+            const form = new FormData();
+            form.append("model_id", this.modelID);
+            form.append("voice_settings", JSON.stringify(this.voiceSettings));
+            form.append("audio", this.audioBlob);
+    
+            fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${this.voiceID}`, {
+                method: "POST",
+                headers: {"xi-api-key": this.apiKey},
+                body: form,
+            }).then(response => response.blob()).then(blob => {
+                this.uploadAudio(blob);
+                this.aiAudioSrc = URL.createObjectURL(blob);  // Set the AI audio for playback
+    
+                // Remove the original human voice from the frontend
+                this.originalAudioSrc = null;
+                
+                this.status = "AI Audio generated and ready for playback.";
+            }).catch(() => this.status = "Error generating AI audio.");
         },
         uploadAudio(audioBlob) {
-          const fileName = `audio-${Date.now()}.wav`;
-          const formData = new FormData();
-          formData.append("file", audioBlob, fileName);
-
-          fetch(`${this.supabaseUrl}/storage/v1/object/audio/${fileName}`, {
-            method: "POST",
-            headers: {"Authorization": `Bearer ${this.supabaseKey}`, "apikey": this.supabaseKey},
-            body: formData,
-          }).then(response => {
-            if (response.ok) this.audioURL = `${this.supabaseUrl}/storage/v1/object/public/audio/${fileName}`;
-          }).catch(() => alert("Error uploading audio."));
+            const fileName = `audio-${Date.now()}.wav`;
+            const formData = new FormData();
+            formData.append("file", audioBlob, fileName);
+    
+            fetch(`${this.supabaseUrl}/storage/v1/object/audio/${fileName}`, {
+                method: "POST",
+                headers: {"Authorization": `Bearer ${this.supabaseKey}`, "apikey": this.supabaseKey},
+                body: formData,
+            }).then(response => {
+                if (response.ok) this.audioURL = `${this.supabaseUrl}/storage/v1/object/public/audio/${fileName}`;
+            }).catch(() => alert("Error uploading audio."));
         },
-        scheduleEvent() {
-            const payload = {
+        sendNow() {
+          if (!this.audioURL || !this.groupName) {
+              alert("Audio not generated or group name missing.");
+              return;
+          }
+  
+          const payload = {
+              url: this.audioURL,
+              group: this.groupName,
+              // scheduledAt is omitted for immediate sending
+          };
+          
+          fetch("http://3.108.215.55/api/v1/forward-retool-audio", {
+              method: "POST",
+              headers: {
+                  "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+          })
+          .then(response => {
+              if (!response.ok) {
+                  return response.text().then(errorMessage => {
+                      throw new Error(`HTTP error! status: ${response.status}, message: ${errorMessage}`);
+                  });
+              }
+              return response.text(); 
+          })
+          .then(responseText => {
+              this.status = "Message sent just now."; // Update status message
+              this.aiAudioSrc = null; // Hide AI audio from frontend
+          })
+          .catch(error => {
+              this.status = "Error sending audio now.";
+          });
+      },
+  
+      scheduleEvent() {
+          if (!this.audioURL || !this.datetime || !this.groupName) {
+              alert("Audio not generated, date/time, or group name missing.");
+              return;
+          }
+  
+          const payload = {
               url: this.audioURL,
               group: this.groupName,
               scheduledAt: moment(this.datetime).utc().format(), // Use UTC format for scheduling
-            };
-
-            fetch("http://3.108.215.55/api/v1/forward-retool-audio", {
+          };
+  
+          fetch("http://3.108.215.55/api/v1/forward-retool-audio", {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
+                  "Content-Type": "application/json",
               },
               body: JSON.stringify(payload),
-            })
-            .then(response => {
+          })
+          .then(response => {
               if (!response.ok) {
-                // Try to parse error message if the status is not OK
-                return response.text().then(errorMessage => {
-                  throw new Error(`HTTP error! status: ${response.status}, message: ${errorMessage}`);
-                });
+                  return response.text().then(errorMessage => {
+                      throw new Error(`HTTP error! status: ${response.status}, message: ${errorMessage}`);
+                  });
               }
-              return response.text(); // Change to response.text() for plain text response
-            })
-            .then(responseText => {
-              this.status = responseText;
-            })
-            .catch(error => {
+              return response.text(); 
+          })
+          .then(responseText => {
+              this.status = responseText; // Update status with server response
+              this.aiAudioSrc = null; // Hide AI audio from frontend
+          })
+          .catch(error => {
               this.status = "Error scheduling event.";
-            });
-      },
-      getGroupNameFromURL() {
+          });
+      },  
+        getGroupNameFromURL() {
             const params = new URLSearchParams(window.location.search);
             const group = params.get("group");
             if (group) {
-              this.groupName = group;
+                this.groupName = group;
             }
         },
-      },
+    },            
       mounted() {
         this.getGroupNameFromURL();
         this.$nextTick(() => {
             flatpickr("#datetime", {
                 enableTime: true,
                 dateFormat: "Y-m-d H:i",
-                minDate: new Date(Date.now() + 60000), // 1 minute in the future
-                defaultDate: new Date(Date.now() + 60000),
-                onChange: (selectedDates) => {
-                  // Manually update datetime in Vue's data
-                  this.datetime = selectedDates[0];
-                },
-              });
+                minDate: new Date(Date.now()), // Allow current time
+                defaultDate: new Date(Date.now()), // Set default to current time
+                onChange: (selectedDates, dateStr) => this.datetime = dateStr,
+            });
         });
       },
     });
 </script>
-
 </body>
 </html>

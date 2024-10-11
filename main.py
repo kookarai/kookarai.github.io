@@ -228,3 +228,7 @@ async def say_hello(body: MessageBody):
         "affected": 1,
         "video_url": video_public_url
     }
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app",host="localhost",port=8000,reload=True)
